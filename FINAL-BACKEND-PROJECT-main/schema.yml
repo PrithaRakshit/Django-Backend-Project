@@ -1,0 +1,661 @@
+openapi: 3.0.3
+info:
+  title: HubSpot Deals Extraction Service API
+  version: 1.0.0
+  description: |-
+    REST API for the HubSpot Deals DLT Integration Service.
+
+    Start extraction jobs, poll their status, retrieve paginated deal data, cancel or remove jobs, and view aggregated statistics.
+
+    Authentication is job-level: supply a HubSpot private-app access token when starting a scan via POST /api/v1/scan/start.
+  contact:
+    name: API Support
+  license:
+    name: MIT
+paths:
+  /api/v1/health:
+    get:
+      operationId: v1_health_retrieve
+      description: |-
+        GET /api/v1/health
+
+        Returns service health status. Always 200 when the service is running.
+        Used by Docker health checks and monitoring systems.
+      summary: Service health check
+      tags:
+      - Health
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+          description: ''
+  /api/v1/jobs/jobs:
+    get:
+      operationId: v1_jobs_jobs_list
+      description: |-
+        GET /api/v1/jobs/jobs
+
+        Returns a paginated list of all extraction jobs.
+        Supports filtering by status, pipeline_name, tenant_id, and date range.
+        Supports ordering by created_at, updated_at, record_count.
+      summary: List all extraction jobs
+      parameters:
+      - in: query
+        name: created_after
+        schema:
+          type: string
+        description: ISO-8601 datetime — only jobs created after
+      - in: query
+        name: created_before
+        schema:
+          type: string
+        description: ISO-8601 datetime — only jobs created before
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: Field to sort by
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Page number
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: Results per page (max 100)
+      - in: query
+        name: pipeline_name
+        schema:
+          type: string
+        description: Filter by pipeline name
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: Filter by status (pending/running/completed/failed/cancelled)
+      - in: query
+        name: tenant_id
+        schema:
+          type: string
+        description: Filter by tenant ID
+      tags:
+      - Jobs
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedExtractionJobList'
+          description: ''
+  /api/v1/jobs/statistics:
+    get:
+      operationId: v1_jobs_statistics_retrieve
+      description: |-
+        GET /api/v1/jobs/statistics
+
+        Returns aggregated metrics for all extraction jobs:
+        counts by status, total records extracted, and average extraction time.
+      summary: Get aggregated job statistics
+      tags:
+      - Jobs
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Statistics'
+          description: ''
+  /api/v1/scan/cancel/{job_id}:
+    post:
+      operationId: v1_scan_cancel_create
+      description: |-
+        POST /api/v1/scan/cancel/<job_id>
+
+        Cancels a pending or running extraction job.
+        Completed, failed, or already-cancelled jobs cannot be cancelled.
+      summary: Cancel a pending or running extraction job
+      parameters:
+      - in: path
+        name: job_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Scan
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelJobResponse'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CancelJobResponse'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CancelJobResponse'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelJobResponse'
+          description: ''
+        '404':
+          description: Job not found
+        '409':
+          description: Job cannot be cancelled in its current state
+  /api/v1/scan/remove/{job_id}:
+    delete:
+      operationId: v1_scan_remove_destroy
+      description: |-
+        DELETE /api/v1/scan/remove/<job_id>
+
+        Permanently deletes an extraction job and all its associated deal records.
+        After deletion, any subsequent GET to /status/ or /result/ will return 404.
+      summary: Delete an extraction job and all its deal data
+      parameters:
+      - in: path
+        name: job_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Scan
+      responses:
+        '204':
+          description: Job and data deleted successfully
+        '404':
+          description: Job not found
+  /api/v1/scan/result/{job_id}:
+    get:
+      operationId: v1_scan_result_list
+      description: |-
+        GET /api/v1/scan/result/<job_id>
+
+        Returns paginated deal records extracted by a completed job.
+        Supports filtering by deal_stage, amount range, close_date range.
+        Only available when the job status is 'completed'.
+      summary: Retrieve paginated deal records for a completed job
+      parameters:
+      - in: query
+        name: deal_stage
+        schema:
+          type: string
+        description: Filter by deal stage
+      - in: path
+        name: job_id
+        schema:
+          type: string
+        description: UUID of the extraction job
+        required: true
+      - in: query
+        name: max_amount
+        schema:
+          type: number
+          format: double
+        description: Maximum deal amount
+      - in: query
+        name: min_amount
+        schema:
+          type: number
+          format: double
+        description: Minimum deal amount
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: Field to sort by (prefix - for descending)
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Page number
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: Results per page (max 100)
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Search deal_name, deal_stage, description
+      tags:
+      - Scan
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedHubSpotDealList'
+          description: ''
+        '404':
+          description: Job not found
+        '409':
+          description: Job is not yet completed
+  /api/v1/scan/start:
+    post:
+      operationId: v1_scan_start_create
+      description: |-
+        POST /api/v1/scan/start
+
+        Accepts a HubSpot private-app access token and starts an async
+        background extraction job.  Returns 202 Accepted immediately with
+        a job_id that can be polled via /api/v1/scan/status/<job_id>.
+      summary: Start a new HubSpot deals extraction
+      tags:
+      - Scan
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartScanRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/StartScanRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/StartScanRequest'
+        required: true
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartScanResponse'
+          description: ''
+        '400':
+          description: Validation error — missing or invalid fields
+  /api/v1/scan/status/{job_id}:
+    get:
+      operationId: v1_scan_status_retrieve
+      description: |-
+        GET /api/v1/scan/status/<job_id>
+
+        Returns the current status, timing, and record count for a job.
+        Clients should poll this endpoint until status is 'completed' or 'failed'.
+      summary: Get extraction job status
+      parameters:
+      - in: path
+        name: job_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Scan
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractionJobStatus'
+          description: ''
+        '404':
+          description: Job not found
+components:
+  schemas:
+    CancelJobResponse:
+      type: object
+      description: Response for POST /api/v1/scan/cancel/<job_id>.
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        message:
+          type: string
+      required:
+      - job_id
+      - message
+      - status
+    ExtractionJob:
+      type: object
+      description: Full serializer for listing and detail views.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          readOnly: true
+        pipeline_name:
+          type: string
+          readOnly: true
+        tenant_id:
+          type: string
+          readOnly: true
+          nullable: true
+        token_hint:
+          type: string
+          readOnly: true
+          nullable: true
+          description: First 8 chars + *** of the HubSpot access token
+        start_time:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        end_time:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        record_count:
+          type: integer
+          readOnly: true
+        last_cursor:
+          type: string
+          readOnly: true
+          nullable: true
+          description: Last HubSpot pagination cursor (checkpoint)
+        error_message:
+          type: string
+          readOnly: true
+          nullable: true
+        duration_seconds:
+          type: number
+          format: double
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - duration_seconds
+      - end_time
+      - error_message
+      - id
+      - last_cursor
+      - pipeline_name
+      - record_count
+      - start_time
+      - status
+      - tenant_id
+      - token_hint
+      - updated_at
+    ExtractionJobStatus:
+      type: object
+      description: Slim serializer returned by the /status/ endpoint.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          readOnly: true
+        record_count:
+          type: integer
+          readOnly: true
+        start_time:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        end_time:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        pipeline_name:
+          type: string
+          readOnly: true
+        error_message:
+          type: string
+          readOnly: true
+          nullable: true
+        duration_seconds:
+          type: number
+          format: double
+          readOnly: true
+      required:
+      - duration_seconds
+      - end_time
+      - error_message
+      - id
+      - pipeline_name
+      - record_count
+      - start_time
+      - status
+    Health:
+      type: object
+      description: Response for GET /api/v1/health.
+      properties:
+        status:
+          type: string
+        service:
+          type: string
+        version:
+          type: string
+      required:
+      - service
+      - status
+      - version
+    HubSpotDeal:
+      type: object
+      description: Read-only serializer for extracted deal records.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        deal_id:
+          type: string
+          readOnly: true
+        deal_name:
+          type: string
+          readOnly: true
+          nullable: true
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,13}(?:\.\d{0,2})?$
+          readOnly: true
+          nullable: true
+        deal_stage:
+          type: string
+          readOnly: true
+          nullable: true
+        close_date:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        pipeline:
+          type: string
+          readOnly: true
+          nullable: true
+        owner_id:
+          type: string
+          readOnly: true
+          nullable: true
+        create_date:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        last_modified_date:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        description:
+          type: string
+          readOnly: true
+          nullable: true
+        deal_type:
+          type: string
+          readOnly: true
+          nullable: true
+        extracted_at:
+          type: string
+          format: date-time
+          readOnly: true
+        scan_id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: Mirrors the parent job UUID
+        tenant_id:
+          type: string
+          readOnly: true
+          nullable: true
+        raw_properties:
+          readOnly: true
+      required:
+      - amount
+      - close_date
+      - create_date
+      - deal_id
+      - deal_name
+      - deal_stage
+      - deal_type
+      - description
+      - extracted_at
+      - id
+      - last_modified_date
+      - owner_id
+      - pipeline
+      - raw_properties
+      - scan_id
+      - tenant_id
+    PaginatedExtractionJobList:
+      type: object
+      properties:
+        count:
+          type: integer
+        next:
+          type: string
+          nullable: true
+        previous:
+          type: string
+          nullable: true
+        page:
+          type: integer
+        total_pages:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtractionJob'
+    PaginatedHubSpotDealList:
+      type: object
+      properties:
+        count:
+          type: integer
+        next:
+          type: string
+          nullable: true
+        previous:
+          type: string
+          nullable: true
+        page:
+          type: integer
+        total_pages:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/HubSpotDeal'
+    StartScanRequest:
+      type: object
+      description: |-
+        Request body for POST /api/v1/scan/start.
+
+        The access_token is used only within the request lifecycle;
+        only a safe hint is persisted to the database.
+      properties:
+        access_token:
+          type: string
+          description: HubSpot private-app access token (pat-na1-... or similar).
+          minLength: 10
+        properties:
+          type: array
+          items:
+            type: string
+          description: Optional list of HubSpot deal property names to extract. Defaults
+            to the standard set if omitted.
+        tenant_id:
+          type: string
+          description: Optional tenant identifier for multi-tenant deployments.
+      required:
+      - access_token
+    StartScanResponse:
+      type: object
+      description: Response schema for a successful POST /api/v1/scan/start.
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        message:
+          type: string
+      required:
+      - job_id
+      - message
+      - status
+    Statistics:
+      type: object
+      description: Response for GET /api/v1/jobs/statistics.
+      properties:
+        total_jobs:
+          type: integer
+        pending_jobs:
+          type: integer
+        running_jobs:
+          type: integer
+        completed_jobs:
+          type: integer
+        failed_jobs:
+          type: integer
+        cancelled_jobs:
+          type: integer
+        total_records_extracted:
+          type: integer
+        avg_extraction_time_seconds:
+          type: number
+          format: double
+          nullable: true
+      required:
+      - avg_extraction_time_seconds
+      - cancelled_jobs
+      - completed_jobs
+      - failed_jobs
+      - pending_jobs
+      - running_jobs
+      - total_jobs
+      - total_records_extracted
+    StatusEnum:
+      enum:
+      - pending
+      - running
+      - completed
+      - failed
+      - cancelled
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `running` - Running
+        * `completed` - Completed
+        * `failed` - Failed
+        * `cancelled` - Cancelled

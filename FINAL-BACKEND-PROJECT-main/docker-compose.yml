@@ -1,0 +1,64 @@
+version: "3.9"
+
+# ──────────────────────────────────────────────────────────────────
+# HubSpot Deals Extraction Service — Docker Compose
+#
+# Ports per assessment spec:
+#   dev   → 5200
+#   stage → 5201
+#   prod  → 5202
+# ──────────────────────────────────────────────────────────────────
+
+services:
+  # ── Development service (default) ───────────────────────────────
+  web:
+    build: .
+    container_name: hubspot-deals-dev
+    ports:
+      - "5200:5200"
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-docker-dev-key}
+      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+      - PIPELINE_NAME=hubspot_deals
+      - CHECKPOINT_EVERY=5
+      - SERVICE_PORT=5200
+      # Uncomment and set for PostgreSQL:
+      # - DATABASE_URL=postgresql://postgres:postgres@db:5432/hubspot_deals
+    volumes:
+      # Mount source for live reload in dev
+      - .:/app
+    # Uncomment to use PostgreSQL:
+    # depends_on:
+    #   db:
+    #     condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5200/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ── Optional PostgreSQL database ─────────────────────────────────
+  # Uncomment this block if you want PostgreSQL instead of SQLite:
+  #
+  # db:
+  #   image: postgres:16-alpine
+  #   container_name: hubspot-deals-db
+  #   environment:
+  #     - POSTGRES_DB=hubspot_deals
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=postgres
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+# volumes:
+#   postgres_data:
